@@ -433,60 +433,252 @@ class _RadarScreenState extends State<RadarScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.68),
       builder: (_) => StatefulBuilder(
-        builder: (ctx, setSheet) => DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.35,
-          maxChildSize: 0.92,
-          expand: false,
-          builder: (context, sc) => Container(
-            decoration: const BoxDecoration(
-              color: K.plum,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: ListView(
-              controller: sc,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
+        builder: (sheetContext, setSheet) {
+          final visible = List<int>.generate(_notifs.length, (i) => i)
+              .where((i) {
+            if (filter == 'belum') return _unread.contains(i);
+            if (filter == 'sosial') return [0, 2, 4].contains(i);
+            if (filter == 'aktivitas') return [1, 3].contains(i);
+            return true;
+          }).toList();
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.82,
+            minChildSize: 0.55,
+            maxChildSize: 0.96,
+            expand: false,
+            builder: (context, scrollController) => Container(
+              decoration: const BoxDecoration(
+                color: K.plum,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 11),
+                  Container(
+                    width: 42,
                     height: 4,
                     decoration: BoxDecoration(
                       color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Notifikasi',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 22, 18, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Notifikasi',
+                                style: TextStyle(
+                                  color: K.text,
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.7,
+                                ),
+                              ),
+                            ),
+                            if (_unread.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: K.coral.withOpacity(0.16),
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: Text(
+                                  '${_unread.length} baru',
+                                  style: const TextStyle(
+                                    color: K.coral,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Tutup',
+                              onPressed: () => Navigator.pop(sheetContext),
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: K.muted,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Semua kabar terbaru dari komunitasmu.',
+                          style: TextStyle(color: K.muted, fontSize: 13),
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    _notifFilter('semua', 'Semua', setSheet),
+                                    _notifFilter(
+                                      'belum',
+                                      'Belum dibaca',
+                                      setSheet,
+                                    ),
+                                    _notifFilter(
+                                      'sosial',
+                                      'Sosial',
+                                      setSheet,
+                                    ),
+                                    _notifFilter(
+                                      'aktivitas',
+                                      'Aktivitas',
+                                      setSheet,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (_unread.isNotEmpty)
+                              TextButton(
+                                onPressed: () {
+                                  setState(() => _unread.clear());
+                                  setSheet(() {});
+                                },
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  foregroundColor: K.coral,
+                                ),
+                                child: const Text(
+                                  'Baca semua',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: _unread.isEmpty
-                          ? null
-                          : () {
-                              setState(() => _unread.clear());
-                              setSheet(() {});
-                            },
-                      child: const Text('Tandai semua dibaca'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                for (var i = 0; i < _notifs.length; i++)
-                  _notifTile(i, setSheet),
-              ],
+                  ),
+                  Expanded(
+                    child: visible.isEmpty
+                        ? _notifEmpty()
+                        : ListView(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(20, 2, 20, 30),
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(2, 8, 0, 12),
+                                child: Text(
+                                  'TERBARU',
+                                  style: TextStyle(
+                                    color: K.muted,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ),
+                              for (final i in visible) _notifTile(i, setSheet),
+                              const SizedBox(height: 12),
+                              Center(
+                                child: Text(
+                                  'Kamu sudah sampai di akhir notifikasi',
+                                  style: TextStyle(
+                                    color: K.muted.withOpacity(0.7),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _notifFilter(String value, String label, StateSetter setSheet) {
+    final selected = filter == value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 7),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(30),
+        onTap: () => setSheet(() => filter = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? K.coral : Colors.white.withOpacity(0.045),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: selected ? K.coral : Colors.white.withOpacity(0.08),
             ),
           ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : K.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _notifEmpty() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.notifications_off_outlined,
+                color: K.muted,
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Belum ada notifikasi',
+              style: TextStyle(
+                color: K.text,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 7),
+            const Text(
+              'Notifikasi baru akan muncul di sini.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: K.muted, fontSize: 12),
+            ),
+          ],
         ),
       ),
     );
@@ -495,47 +687,302 @@ class _RadarScreenState extends State<RadarScreen>
   Widget _notifTile(int i, StateSetter setSheet) {
     final n = _notifs[i];
     final unread = _unread.contains(i);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      onTap: () {
-        setState(() => _unread.remove(i));
-        setSheet(() {});
-      },
-      leading: Container(
-        width: 46,
-        height: 46,
-        decoration: BoxDecoration(
-          color: n.$2.withOpacity(0.18),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Icon(n.$1, color: n.$2, size: 24),
-      ),
-      title: Text(
-        n.$3,
-        style: TextStyle(
-          fontWeight: unread ? FontWeight.w800 : FontWeight.w600,
-          fontSize: 14,
-        ),
-      ),
-      subtitle: Text(
-        n.$4,
-        style: const TextStyle(color: K.muted, fontSize: 12),
-      ),
-      trailing: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(n.$5, style: const TextStyle(color: K.muted, fontSize: 11)),
-          const SizedBox(height: 6),
-          Container(
-            width: 8,
-            height: 8,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Material(
+        color: unread
+            ? Colors.white.withOpacity(0.075)
+            : Colors.white.withOpacity(0.025),
+        borderRadius: BorderRadius.circular(19),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(19),
+          onTap: () {
+            setState(() => _unread.remove(i));
+            setSheet(() {});
+            _openNotifDetail(i);
+          },
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(13, 14, 13, 14),
             decoration: BoxDecoration(
-              color: unread ? K.coral : Colors.transparent,
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(19),
+              border: Border.all(
+                color: unread
+                    ? K.coral.withOpacity(0.22)
+                    : Colors.white.withOpacity(0.045),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 45,
+                  height: 45,
+                  decoration: BoxDecoration(
+                    color: n.$2.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(n.$1, color: n.$2, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              n.$3,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: K.text,
+                                fontSize: 13,
+                                height: 1.3,
+                                fontWeight:
+                                    unread ? FontWeight.w900 : FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (unread) ...[
+                            const SizedBox(width: 7),
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: K.coral,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        n.$4,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: K.muted,
+                          fontSize: 11,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 9),
+                      Text(
+                        n.$5,
+                        style: TextStyle(
+                          color: unread ? K.coral : K.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 5),
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    color: K.muted,
+                    size: 19,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  String _notifMessage(int i) {
+    switch (i) {
+      case 0:
+        return 'Citra Lestari sedang aktif di Yogyakarta dan menyapamu. '
+            'Mungkin ini kesempatan yang pas untuk memulai obrolan dan '
+            'mengenal teman baru dari kampus lain.';
+      case 1:
+        return 'Jakarta sedang menjadi salah satu titik paling ramai di '
+            'UNIVA. Ada 640 mahasiswa yang aktif, meningkat 18% dibandingkan '
+            'kemarin. Yuk, lihat apa yang sedang ramai dibicarakan.';
+      case 2:
+        return 'Reza Mahendra ingin terhubung denganmu. Ia berasal dari '
+            'jurusan Teknik Industri di Palembang. Buka profilnya untuk '
+            'mengenal lebih jauh sebelum menerima permintaan pertemanan.';
+      case 3:
+        return 'Makassar berhasil masuk tiga besar kota dengan aktivitas '
+            'mahasiswa tertinggi minggu ini. Terima kasih sudah ikut '
+            'membuat komunitas UNIVA semakin hidup.';
+      default:
+        return 'Gita Maharani baru saja check-in di Denpasar. Lihat lokasi '
+            'dan aktivitas terbaru temanmu untuk menemukan tempat menarik '
+            'di sekitar komunitas.';
+    }
+  }
+
+  String _notifCategory(int i) {
+    if (i == 0 || i == 2) return 'SOSIAL';
+    if (i == 4) return 'LOKASI';
+    return 'AKTIVITAS KOMUNITAS';
+  }
+
+  void _openNotifDetail(int i) {
+    final n = _notifs[i];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.72),
+      builder: (detailContext) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(detailContext).height * 0.84,
+        ),
+        decoration: const BoxDecoration(
+          color: K.plum,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 13, 24, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 27),
+                Row(
+                  children: [
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: n.$2.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(19),
+                      ),
+                      child: Icon(n.$1, color: n.$2, size: 28),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: K.mint.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            color: K.mint,
+                            size: 13,
+                          ),
+                          SizedBox(width: 5),
+                          Text(
+                            'Sudah dibaca',
+                            style: TextStyle(
+                              color: K.mint,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 23),
+                Text(
+                  _notifCategory(i),
+                  style: const TextStyle(
+                    color: K.coral,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.7,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  n.$3,
+                  style: const TextStyle(
+                    color: K.text,
+                    fontSize: 23,
+                    height: 1.2,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.6,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.schedule_rounded,
+                      color: K.muted,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      n.$5,
+                      style: const TextStyle(color: K.muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.045),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  ),
+                  child: Text(
+                    _notifMessage(i),
+                    style: const TextStyle(
+                      color: K.text,
+                      fontSize: 14,
+                      height: 1.75,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(detailContext),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: K.coral,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Mengerti',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
