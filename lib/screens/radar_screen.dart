@@ -1,5 +1,7 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../data.dart';
@@ -56,17 +58,31 @@ class RadarScreen extends StatefulWidget {
 }
 
 class _RadarScreenState extends State<RadarScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  static const double _minScale = 0.5;
+  static const double _maxScale = 5.0;
+
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 3),
   )..repeat();
+  late final AnimationController _zoomer = AnimationController(vsync: this);
   final _tc = TransformationController();
+  Matrix4? _zoomFrom, _zoomTo;
+  Matrix4 _home = Matrix4.identity();
+  Offset? _doubleTapAt;
   Size _canvas = Size.zero;
+  EdgeInsets _boundary = const EdgeInsets.all(120);
   bool _placed = false;
 
   String filter = 'semua';
   final Set<int> _unread = {0, 1, 2, 3, 4};
+
+  @override
+  void initState() {
+    super.initState();
+    _zoomer.addListener(_onZoomTick);
+  }
 
   @override
   void didChangeDependencies() {
@@ -76,6 +92,11 @@ class _RadarScreenState extends State<RadarScreen>
     final cw = s.width * 3.0;
     final sc = cw * 0.92 / IndoMap.lonSpan;
     _canvas = Size(cw, math.max(IndoMap.latSpan * sc * 1.6, 900));
+
+    // boundary diatur supaya batas zoom-out cubit dan tombol selalu sama
+    final mW = (s.width / _minScale - _canvas.width) / 2;
+    final mH = (s.height / _minScale - _canvas.height) / 2;
+    _boundary = EdgeInsets.all(math.max(0, math.max(mW, mH)));
 
     // awal: fokus ke Jawa, Sumatra bagian selatan, dan Kalimantan
     const k = 0.9;
@@ -87,12 +108,14 @@ class _RadarScreenState extends State<RadarScreen>
           0,
         ) *
         Matrix4.diagonal3Values(k, k, 1);
+    _home = _tc.value.clone();
     _placed = true;
   }
 
   @override
   void dispose() {
     _c.dispose();
+    _zoomer.dispose();
     _tc.dispose();
     super.dispose();
   }
@@ -112,6 +135,67 @@ class _RadarScreenState extends State<RadarScreen>
       ? '${(n / 1000).toStringAsFixed(1).replaceAll('.', ',')}k'
       : '$n';
 
+  // ---------- zoom peta ----------
+
+  Matrix4 _zoomTarget(double factor, Offset focal) {
+    final m = _tc.value;
+    final s = m.getMaxScaleOnAxis();
+    final ns = (s * factor).clamp(_minScale, _maxScale);
+    final f = ns / s;
+    return Matrix4.translationValues(
+      f * m.entry(0, 3) + (1 - f) * focal.dx,
+      f * m.entry(1, 3) + (1 - f) * focal.dy,
+      0,
+    ) * Matrix4.diagonal3Values(ns, ns, 1);
+  }
+
+  Matrix4 _lerpMatrix(Matrix4 a, Matrix4 b, double t) {
+    final s = ui.lerpDouble(a.getMaxScaleOnAxis(), b.getMaxScaleOnAxis(), t)!;
+    return Matrix4.translationValues(
+      ui.lerpDouble(a.entry(0, 3), b.entry(0, 3), t)!,
+      ui.lerpDouble(a.entry(1, 3), b.entry(1, 3), t)!,
+      0,
+    ) * Matrix4.diagonal3Values(s, s, 1);
+  }
+
+  void _onZoomTick() {
+    final from = _zoomFrom;
+    final to = _zoomTo;
+    if (from == null || to == null) return;
+    _tc.value = _lerpMatrix(from, to, Curves.easeOutCubic.transform(_zoomer.value));
+  }
+
+  void _animateTo(Matrix4 target) {
+    _zoomFrom = _tc.value.clone();
+    _zoomTo = target;
+    _zoomer
+      ..duration = const Duration(milliseconds: 300)
+      ..reset()
+      ..forward();
+  }
+
+  void _zoomBy(double factor, {Offset? focal}) {
+    final s = MediaQuery.sizeOf(context);
+    _animateTo(_zoomTarget(factor, focal ?? Offset(s.width / 2, s.height / 2)));
+  }
+
+  void _resetView() => _animateTo(_home);
+
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    final dy = e.scrollDelta.dy;
+    if (dy == 0) return;
+    _zoomBy(dy > 0 ? 0.86 : 1.16, focal: e.localPosition);
+  }
+
+  void _onDoubleTapDown(TapDownDetails d) => _doubleTapAt = d.localPosition;
+
+  void _onDoubleTap() {
+    final at = _doubleTapAt;
+    _doubleTapAt = null;
+    if (at != null) _zoomBy(2.0, focal: at);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -119,29 +203,38 @@ class _RadarScreenState extends State<RadarScreen>
       body: Stack(
         children: [
           Positioned.fill(
-            child: InteractiveViewer(
-              transformationController: _tc,
-              constrained: false,
-              minScale: 0.35,
-              maxScale: 2.5,
-              boundaryMargin: const EdgeInsets.all(120),
-              child: SizedBox(
-                width: _canvas.width,
-                height: _canvas.height,
-                child: Stack(
-                  children: [
-                    const Positioned.fill(
-                      child: RepaintBoundary(
-                        child: CustomPaint(painter: IndoMapPainter()),
-                      ),
+            child: Listener(
+              onPointerSignal: _onPointerSignal,
+              child: GestureDetector(
+                onDoubleTapDown: _onDoubleTapDown,
+                onDoubleTap: _onDoubleTap,
+                child: InteractiveViewer(
+                  transformationController: _tc,
+                  constrained: false,
+                  minScale: _minScale,
+                  maxScale: _maxScale,
+                  boundaryMargin: _boundary,
+                  onInteractionStart: (_) => _zoomer.stop(),
+                  child: SizedBox(
+                    width: _canvas.width,
+                    height: _canvas.height,
+                    child: Stack(
+                      children: [
+                        const Positioned.fill(
+                          child: RepaintBoundary(
+                            child: CustomPaint(painter: IndoMapPainter()),
+                          ),
+                        ),
+                        for (final z in zones) _positioned(z),
+                      ],
                     ),
-                    for (final z in zones) _positioned(z),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
           _header(),
+          _zoomControls(),
           Positioned(
             left: 0,
             right: 0,
@@ -201,7 +294,7 @@ class _RadarScreenState extends State<RadarScreen>
                             ),
                             const SizedBox(height: 2),
                             const Text(
-                              'Cubit dan geser peta buat jelajah Indonesia',
+                              'Cubit, ketuk dua kali, atau gulir peta',
                               style: TextStyle(color: K.muted, fontSize: 13),
                             ),
                           ],
@@ -318,14 +411,74 @@ class _RadarScreenState extends State<RadarScreen>
     );
   }
 
+  // ---------- kontrol zoom ----------
+
+  Widget _zoomControls() {
+    return Positioned(
+      right: 16,
+      bottom: 112,
+      child: Container(
+        decoration: BoxDecoration(
+          color: K.plum,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _zoomBtn(Icons.add_rounded, () => _zoomBy(1.55)),
+            _zoomDivider(),
+            _zoomBtn(Icons.remove_rounded, () => _zoomBy(1 / 1.55)),
+            _zoomDivider(),
+            _zoomBtn(Icons.explore_rounded, _resetView),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _zoomBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 46,
+        height: 46,
+        child: Icon(icon, size: 22, color: K.muted),
+      ),
+    );
+  }
+
+  Widget _zoomDivider() =>
+      Container(width: 22, height: 1, color: Colors.white.withOpacity(0.08));
+
   // ---------- titik kampus di peta ----------
 
   Widget _positioned(Zone z) {
     final p = IndoMap.project(z.lon, z.lat, _canvas);
-    return Positioned(left: p.dx - 48, top: p.dy - 34, child: _zoneBlob(z));
+    return Positioned(
+      left: p.dx - 48,
+      top: p.dy - 48,
+      child: ListenableBuilder(
+        listenable: _tc,
+        builder: (context, _) {
+          final s = _tc.value.getMaxScaleOnAxis();
+          return Transform.scale(
+            scale: 1 / s,
+            child: _zoneBlob(z, showLabel: s >= 0.9),
+          );
+        },
+      ),
+    );
   }
 
-  Widget _zoneBlob(Zone z) {
+  Widget _zoneBlob(Zone z, {bool showLabel = true}) {
     final on = filter == 'semua' || filter == z.tag;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 250),
@@ -334,7 +487,10 @@ class _RadarScreenState extends State<RadarScreen>
         onTap: on ? () => _openZone(z) : null,
         child: SizedBox(
           width: 96,
-          child: Column(
+          height: 96,
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
             children: [
               SizedBox(
                 width: 68,
@@ -403,22 +559,33 @@ class _RadarScreenState extends State<RadarScreen>
                   },
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _bg.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  z.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+              if (showLabel)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _bg.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        z.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
